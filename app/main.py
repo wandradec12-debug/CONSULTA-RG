@@ -122,7 +122,7 @@ def stats(db: Session = Depends(db), user=Depends(require_admin)):
     if not user:
         return JSONResponse({"error": "admin only"}, status_code=403)
     last = db.query(ImportBatch).order_by(ImportBatch.id.desc()).first()
-    return {"rg_count": db.query(func.count(StockItem.id)).scalar() or 0, "imports": db.query(func.count(ImportBatch.id)).scalar() or 0, "last_import": last.imported_at.isoformat() if last else None}
+    return {"rg_count": db.query(func.count(StockItem.id)).scalar() or 0, "imports": db.query(func.count(ImportBatch.id)).scalar() or 0, "rg_consultados": db.query(func.count(func.distinct(Consultation.rg))).scalar() or 0, "consultas_total": db.query(func.count(Consultation.id)).scalar() or 0, "last_import": last.imported_at.isoformat() if last else None}
 
 ALIASES = {
     "rg": "rg", "registrogeral": "rg", "registro": "rg", "codigo": "rg", "codigorg": "rg",
