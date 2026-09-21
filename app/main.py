@@ -2,11 +2,11 @@ import os, io, hashlib, secrets
 from datetime import datetime, timezone
 import pandas as pd
 import jwt
-from fastapi import FastAPI, Request, UploadFile, File, Form, Depends
+from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Body
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, func, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./estoque.db")
@@ -34,6 +34,7 @@ class StockItem(Base):
     __tablename__ = "stock_items"
     id = Column(Integer, primary_key=True)
     rg = Column(String(120), index=True, nullable=False)
+    cod_produto = Column(String(120))
     produto = Column(String(255))
     lote = Column(String(120))
     validade = Column(String(50))
@@ -50,6 +51,10 @@ class Consultation(Base):
     consulted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 Base.metadata.create_all(bind=engine)
+
+if "cod_produto" not in {c["name"] for c in inspect(engine).get_columns("stock_items")}:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE stock_items ADD COLUMN cod_produto VARCHAR(120)"))
 
 app = FastAPI(title="Consulta RG • Estoque")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
