@@ -1,7 +1,48 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Consulta RG • Operacional</title><link rel="stylesheet" href="/static/style.css"><script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script></head><body><header><div><strong>Consulta RG • Operacional</strong><span> • {{ user.user }}</span></div><a href="/logout">Sair</a></header><main><section class="hero card"><h1>Consulta de Estoque</h1><p>Digite ou leia o RG da caixa/palete.</p><div class="search"><input id="rg" placeholder="Digite ou leia o RG" autofocus><button onclick="consultar()">🔎 Consultar</button></div><button class="secondary" onclick="startScanner()">📷 Ler QR Code</button><div id="reader"></div><div id="result"></div></section></main><script>
-async function api(url,opt){let r=await fetch(url,{credentials:'include',...(opt||{})});let j=await r.json();if(!r.ok)throw Error(j.error||'Erro');return j}
-async function consultar(){let rg=document.getElementById('rg').value.trim();if(!rg)return;try{let d=await api('/api/rg/'+encodeURIComponent(rg));document.getElementById('result').innerHTML=d.found?'<div class="ok"><h2>✓ RG localizado</h2><p><b>Posição esperada:</b> '+esc(d.posicao)+'</p><p><b>Produto:</b> '+esc(d.produto)+'</p><p><b>Lote:</b> '+esc(d.lote)+'</p><p><b>Validade:</b> '+esc(d.validade)+'</p><p><b>Quantidade:</b> '+esc(d.quantidade)+'</p><p><b>Status:</b> '+esc(d.status)+'</p></div>':'<div class="bad"><h2>⚠ RG não encontrado</h2><p>'+esc(d.rg)+'</p></div>'}catch(e){alert(e.message)}}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#123b63"><meta name="description" content="Consulta offline de estoque por RG">
+<link rel="manifest" href="/static/manifest.json">
+<title>Consulta RG • Operacional</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+<header><div><strong>Consulta RG • Operacional</strong><span> • {{ user.user }}</span></div><a href="/logout">Sair</a></header>
+<main>
+<section class="hero card">
+<h1>Consulta de Estoque</h1>
+<p>Digite ou leia o RG da caixa/palete.</p>
+<div class="offline-bar"><span id="connection">🟢 Online</span><span id="syncStatus">Base local: verificando...</span><button class="small" onclick="sincronizar()">↻ Sincronizar base</button></div>
+<div class="search"><input id="rg" placeholder="Digite ou leia o RG" autofocus><button onclick="consultar()">🔎 Consultar</button></div>
+<button class="secondary" onclick="startScanner()">📷 Ler QR Code</button>
+<div id="reader"></div><div id="result"></div>
+</section>
+</main>
+<script>
+const DB_NAME='consulta-rg-offline',DB_VERSION=1,STORE='estoque',META='meta',QUEUE='fila';
+function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'rg'});if(!db.objectStoreNames.contains(META))db.createObjectStore(META,{keyPath:'key'});if(!db.objectStoreNames.contains(QUEUE))db.createObjectStore(QUEUE,{autoIncrement:true})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+async function dbPutMany(items){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite'),s=tx.objectStore(STORE);s.clear();for(const x of items)s.put(x);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
+async function dbGet(rg){const db=await openDB();return new Promise((resolve,reject)=>{const r=db.transaction(STORE).objectStore(STORE).get(rg);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}
+async function metaGet(){const db=await openDB();return new Promise((resolve,reject)=>{const r=db.transaction(META).objectStore(META).get('base');r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}
+async function metaPut(v){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(META,'readwrite');tx.objectStore(META).put({key:'base',...v});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
+async function queueAdd(x){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(QUEUE,'readwrite');tx.objectStore(QUEUE).add(x);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
+async function queueAll(){const db=await openDB();return new Promise((resolve,reject)=>{const r=db.transaction(QUEUE).objectStore(QUEUE).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+async function queueClear(){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(QUEUE,'readwrite');tx.objectStore(QUEUE).clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
+async function api(url,opt){const r=await fetch(url,{credentials:'include',...(opt||{})});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro');return j}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-let scanner;function startScanner(){if(scanner)return;scanner=new Html5Qrcode("reader");scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:180}},t=>{document.getElementById('rg').value=t;scanner.stop().then(()=>{scanner=null;consultar()})}).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e)})}
+function render(d,offline=false){document.getElementById('result').innerHTML=d.found?'<div class="ok"><h2>✓ RG localizado '+(offline?'• OFFLINE':'')+'</h2><p><b>Posição esperada:</b> '+esc(d.posicao)+'</p><p><b>COD. PRODUTO:</b> '+esc(d.cod_produto)+'</p><p><b>Produto:</b> '+esc(d.produto)+'</p><p><b>Lote:</b> '+esc(d.lote)+'</p><p><b>Validade:</b> '+esc(d.validade)+'</p><p><b>Quantidade:</b> '+esc(d.quantidade)+'</p><p><b>Status:</b> '+esc(d.status)+'</p></div>':'<div class="bad"><h2>⚠ RG não encontrado '+(offline?'• OFFLINE':'')+'</h2><p>'+esc(d.rg)+'</p></div>'}
+async function consultar(){const rg=document.getElementById('rg').value.trim();if(!rg)return;try{let d=await dbGet(rg);if(d){render({found:true,...d},!navigator.onLine);await queueAdd({rg,found:true,consulted_at:new Date().toISOString()});if(navigator.onLine)enviarFila().catch(()=>{});return}if(!navigator.onLine){render({found:false,rg},true);return}d=await api('/api/rg/'+encodeURIComponent(rg));render(d,false)}catch(e){alert(e.message)}}
+async function sincronizar(){if(!navigator.onLine){document.getElementById('syncStatus').textContent='Sem internet • usando última base';return}const el=document.getElementById('syncStatus');el.textContent='Sincronizando...';try{const d=await api('/api/sync');await dbPutMany(d.items);await metaPut({version:d.version,filename:d.filename,imported_at:d.imported_at,count:d.count,synced_at:new Date().toISOString()});el.textContent='Base local: '+d.count.toLocaleString('pt-BR')+' RGs • '+formatDate(d.imported_at);await enviarFila()}catch(e){el.textContent='Falha na sincronização';console.error(e)}}
+async function enviarFila(){const q=await queueAll();if(!q.length||!navigator.onLine)return;try{await api('/api/consultations/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});await queueClear()}catch(e){}}
+function formatDate(s){if(!s)return 'sem importação';try{return new Date(s).toLocaleString('pt-BR')}catch{return s}}
+async function atualizarStatus(){document.getElementById('connection').textContent=navigator.onLine?'🟢 Online':'🟠 OFFLINE';const m=await metaGet();document.getElementById('syncStatus').textContent=m?'Base local: '+Number(m.count||0).toLocaleString('pt-BR')+' RGs • '+formatDate(m.imported_at):'Base local: não sincronizada';}
+let scanner;
+function startScanner(){if(scanner)return;if(!navigator.onLine&&'BarcodeDetector' in window){const detector=new BarcodeDetector({formats:['qr_code']});navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(stream=>{const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;stream.getTracks().forEach(t=>t.stop());scanner=null;consultar();return}}catch(e){}requestAnimationFrame(loop)};scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null}};loop()}).catch(e=>alert('Não foi possível acessar a câmera: '+e));return}if(!navigator.onLine){alert('Consulta offline ativa. Digite o RG ou use um leitor de código conectado ao aparelho.');return}scanner=new Html5Qrcode("reader");scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:180}},t=>{document.getElementById('rg').value=t;scanner.stop().then(()=>{scanner=null;consultar()})}).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e)})}
+window.addEventListener('online',()=>{atualizarStatus();sincronizar()});window.addEventListener('offline',atualizarStatus);
 document.getElementById('rg').addEventListener('keydown',e=>{if(e.key==='Enter')consultar()});
-</script></body></html>
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
+atualizarStatus();if(navigator.onLine)sincronizar();
+</script>
+</body></html>
