@@ -186,7 +186,7 @@ def lookup(rg: str, db: Session = Depends(db), user=Depends(current_user)):
     db.commit()
     if not item:
         return {"found": False, "rg": clean}
-    return {"found": True, "rg": item.rg, "produto": item.produto, "lote": item.lote, "validade": item.validade, "posicao": item.posicao, "quantidade": item.quantidade, "status": item.status}
+    return {"found": True, "rg": item.rg, "cod_produto": item.cod_produto or "", "produto": item.produto, "lote": item.lote, "validade": item.validade, "posicao": item.posicao, "quantidade": item.quantidade, "status": item.status}
 
 @app.get("/api/imports")
 def imports(db: Session = Depends(db), user=Depends(require_admin)):
