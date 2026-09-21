@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: estoque
+      POSTGRES_USER: estoque
+      POSTGRES_PASSWORD: estoque
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  web:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://estoque:estoque@db:5432/estoque
+      SECRET_KEY: troque-esta-chave-em-producao
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: admin123
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+volumes:
+  pgdata:
