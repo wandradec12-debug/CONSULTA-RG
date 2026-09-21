@@ -21,6 +21,10 @@
 </section>
 </main>
 <script>
+let deferredInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;document.getElementById('installBtn').style.display='block'});
+window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;document.getElementById('installBtn').style.display='none'});
+async function instalarApp(){if(deferredInstallPrompt){deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;document.getElementById('installBtn').style.display='none';return}alert('Use o menu do navegador e escolha Instalar aplicativo ou Adicionar à tela inicial.');}
 const DB_NAME='consulta-rg-offline',DB_VERSION=1,STORE='estoque',META='meta',QUEUE='fila';
 function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'rg'});if(!db.objectStoreNames.contains(META))db.createObjectStore(META,{keyPath:'key'});if(!db.objectStoreNames.contains(QUEUE))db.createObjectStore(QUEUE,{autoIncrement:true})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 async function dbPutMany(items){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite'),s=tx.objectStore(STORE);s.clear();for(const x of items)s.put(x);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
@@ -39,7 +43,17 @@ async function enviarFila(){const q=await queueAll();if(!q.length||!navigator.on
 function formatDate(s){if(!s)return 'sem importação';try{return new Date(s).toLocaleString('pt-BR')}catch{return s}}
 async function atualizarStatus(){document.getElementById('connection').textContent=navigator.onLine?'🟢 Online':'🟠 OFFLINE';const m=await metaGet();document.getElementById('syncStatus').textContent=m?'Base local: '+Number(m.count||0).toLocaleString('pt-BR')+' RGs • '+formatDate(m.imported_at):'Base local: não sincronizada';}
 let scanner;
-function startScanner(){if(scanner)return;if(!navigator.onLine&&'BarcodeDetector' in window){const detector=new BarcodeDetector({formats:['qr_code']});navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(stream=>{const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;stream.getTracks().forEach(t=>t.stop());scanner=null;consultar();return}}catch(e){}requestAnimationFrame(loop)};scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null}};loop()}).catch(e=>alert('Não foi possível acessar a câmera: '+e));return}if(!navigator.onLine){alert('Consulta offline ativa. Digite o RG ou use um leitor de código conectado ao aparelho.');return}scanner=new Html5Qrcode("reader");scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:180}},t=>{document.getElementById('rg').value=t;scanner.stop().then(()=>{scanner=null;consultar()})}).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e)})}
+function startScanner(){
+ if(scanner)return;
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert('A câmera não está disponível. Use o leitor físico ou digite o RG.');return}
+ if(!('BarcodeDetector' in window)){alert('Este navegador não oferece leitura pela câmera. Em coletores, use o leitor físico configurado para enviar o código no campo RG.');return}
+ const detector=new BarcodeDetector({formats:['qr_code','code_128','code_39','ean_13','ean_8']});
+ navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}).then(stream=>{
+  const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);
+  const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;stream.getTracks().forEach(t=>t.stop());scanner=null;consultar();return}}catch(e){}requestAnimationFrame(loop)};
+  scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null}};loop();
+ }).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e.message)});
+}
 window.addEventListener('online',()=>{atualizarStatus();sincronizar()});window.addEventListener('offline',atualizarStatus);
 document.getElementById('rg').addEventListener('keydown',e=>{if(e.key==='Enter')consultar()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
