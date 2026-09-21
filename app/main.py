@@ -13,6 +13,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./estoque.db")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+OPER_USER = os.getenv("OPER_USER", "operador")
+OPER_PASSWORD = os.getenv("OPER_PASSWORD", "operador123")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
@@ -64,27 +66,28 @@ def db():
     finally:
         s.close()
 
-def token_for(user):
-    return jwt.encode(
-        {"sub": user, "exp": datetime.now(timezone.utc).timestamp() + 28800},
-        SECRET_KEY,
-        algorithm="HS256",
-    )
+def token_for(user, role):
+    return jwt.encode({"sub": user, "role": role, "exp": datetime.now(timezone.utc).timestamp() + 28800}, SECRET_KEY, algorithm="HS256")
 
 def current_user(request: Request):
     token = request.cookies.get("access_token")
     if not token:
         return None
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"]).get("sub")
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return {"user": payload.get("sub"), "role": payload.get("role")}
     except Exception:
         return None
+
+def require_admin(user=Depends(current_user)):
+    return user if user and user.get("role") == "admin" else None
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, user=Depends(current_user)):
     if not user:
         return RedirectResponse("/login", 302)
-    return templates.TemplateResponse("index.html", {"request": request, "user": user})
+    page = "admin.html" if user.get("role") == "admin" else "index.html"
+    return templates.TemplateResponse(page, {"request": request, "user": user})
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
@@ -92,15 +95,14 @@ def login_page(request: Request):
 
 @app.post("/login")
 def login(username: str = Form(...), password: str = Form(...)):
+    role = None
     if secrets.compare_digest(username, ADMIN_USER) and secrets.compare_digest(password, ADMIN_PASSWORD):
+        role = "admin"
+    elif secrets.compare_digest(username, OPER_USER) and secrets.compare_digest(password, OPER_PASSWORD):
+        role = "operacional"
+    if role:
         r = RedirectResponse("/", 302)
-        r.set_cookie(
-            "access_token",
-            token_for(username),
-            httponly=True,
-            secure=COOKIE_SECURE,
-            samesite="lax",
-        )
+        r.set_cookie("access_token", token_for(username, role), httponly=True, secure=COOKIE_SECURE, samesite="lax")
         return r
     return RedirectResponse("/login?error=1", 302)
 
@@ -111,95 +113,59 @@ def logout():
     return r
 
 @app.get("/api/stats")
-def stats(db: Session = Depends(db), user=Depends(current_user)):
+def stats(db: Session = Depends(db), user=Depends(require_admin)):
     if not user:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return JSONResponse({"error": "admin only"}, status_code=403)
     last = db.query(ImportBatch).order_by(ImportBatch.id.desc()).first()
-    return {
-        "rg_count": db.query(func.count(StockItem.id)).scalar() or 0,
-        "imports": db.query(func.count(ImportBatch.id)).scalar() or 0,
-        "last_import": last.imported_at.isoformat() if last else None,
-    }
+    return {"rg_count": db.query(func.count(StockItem.id)).scalar() or 0, "imports": db.query(func.count(ImportBatch.id)).scalar() or 0, "last_import": last.imported_at.isoformat() if last else None}
 
 ALIASES = {
-    "rg": "rg",
-    "registrogeral": "rg",
-    "registro": "rg",
-    "codigo": "rg",
-    "codigorg": "rg",
-    "produto": "produto",
-    "item": "produto",
-    "descricaoproduto": "produto",
-    "lote": "lote",
-    "validade": "validade",
-    "posicao": "posicao",
-    "localizacao": "posicao",
-    "quantidade": "quantidade",
-    "qtd": "quantidade",
-    "qtdcx": "quantidade",
-    "status": "status",
-    "situacao": "status",
+    "rg": "rg", "registrogeral": "rg", "registro": "rg", "codigo": "rg", "codigorg": "rg",
+    "produto": "produto", "item": "produto", "descricaoproduto": "produto",
+    "lote": "lote", "validade": "validade", "posicao": "posicao", "localizacao": "posicao",
+    "quantidade": "quantidade", "qtd": "quantidade", "qtdcx": "quantidade", "status": "status", "situacao": "status",
 }
 
 def norm(s):
     import unicodedata
     s = str(s).strip().lower()
-    return "".join(
-        c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
-    ).replace(" ", "").replace("_", "").replace("-", "")
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).replace(" ", "").replace("_", "").replace("-", "")
 
 @app.post("/api/import")
-async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), user=Depends(current_user)):
+async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), user=Depends(require_admin)):
     if not user:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
-
+        return JSONResponse({"error": "admin only"}, status_code=403)
     raw = await file.read()
     checksum = hashlib.sha256(raw).hexdigest()
-
     try:
-        if file.filename.lower().endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(raw), dtype=str)
-        else:
-            df = pd.read_excel(io.BytesIO(raw), dtype=str)
+        df = pd.read_csv(io.BytesIO(raw), dtype=str) if file.filename.lower().endswith(".csv") else pd.read_excel(io.BytesIO(raw), dtype=str)
     except Exception as e:
         return JSONResponse({"error": f"Não foi possível ler o arquivo: {e}"}, status_code=400)
-
     mapped = {}
     for c in df.columns:
         key = norm(c)
         if key in ALIASES:
             mapped[ALIASES[key]] = c
-
     if "rg" not in mapped or "posicao" not in mapped:
-        return JSONResponse(
-            {"error": "A base precisa conter pelo menos as colunas RG e LOCALIZAÇÃO (posição)."},
-            status_code=400,
-        )
-
+        return JSONResponse({"error": "A base precisa conter pelo menos as colunas RG e LOCALIZAÇÃO (posição)."}, status_code=400)
     batch = ImportBatch(filename=file.filename, checksum=checksum, rows=len(df))
     db.add(batch)
     db.flush()
-
     db.query(StockItem).delete(synchronize_session=False)
-
     for _, row in df.fillna("").iterrows():
         rg = str(row[mapped["rg"]]).strip()
         if not rg:
             continue
-
-        db.add(
-            StockItem(
-                rg=rg,
-                produto=str(row[mapped["produto"]]).strip() if "produto" in mapped else "",
-                lote=str(row[mapped["lote"]]).strip() if "lote" in mapped else "",
-                validade=str(row[mapped["validade"]]).strip() if "validade" in mapped else "",
-                posicao=str(row[mapped["posicao"]]).strip(),
-                quantidade=str(row[mapped["quantidade"]]).strip() if "quantidade" in mapped else "",
-                status=str(row[mapped["status"]]).strip() if "status" in mapped else "",
-                import_id=batch.id,
-            )
-        )
-
+        db.add(StockItem(
+            rg=rg,
+            produto=str(row[mapped["produto"]]).strip() if "produto" in mapped else "",
+            lote=str(row[mapped["lote"]]).strip() if "lote" in mapped else "",
+            validade=str(row[mapped["validade"]]).strip() if "validade" in mapped else "",
+            posicao=str(row[mapped["posicao"]]).strip(),
+            quantidade=str(row[mapped["quantidade"]]).strip() if "quantidade" in mapped else "",
+            status=str(row[mapped["status"]]).strip() if "status" in mapped else "",
+            import_id=batch.id,
+        ))
     db.commit()
     return {"ok": True, "rows": len(df), "filename": file.filename, "import_id": batch.id}
 
@@ -207,37 +173,16 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), 
 def lookup(rg: str, db: Session = Depends(db), user=Depends(current_user)):
     if not user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-
     clean = rg.strip()
     item = db.query(StockItem).filter(StockItem.rg == clean).first()
     db.add(Consultation(rg=clean, found=1 if item else 0))
     db.commit()
-
     if not item:
         return {"found": False, "rg": clean}
-
-    return {
-        "found": True,
-        "rg": item.rg,
-        "produto": item.produto,
-        "lote": item.lote,
-        "validade": item.validade,
-        "posicao": item.posicao,
-        "quantidade": item.quantidade,
-        "status": item.status,
-    }
+    return {"found": True, "rg": item.rg, "produto": item.produto, "lote": item.lote, "validade": item.validade, "posicao": item.posicao, "quantidade": item.quantidade, "status": item.status}
 
 @app.get("/api/imports")
-def imports(db: Session = Depends(db), user=Depends(current_user)):
+def imports(db: Session = Depends(db), user=Depends(require_admin)):
     if not user:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-    return [
-        {
-            "id": x.id,
-            "filename": x.filename,
-            "rows": x.rows,
-            "imported_at": x.imported_at.isoformat(),
-        }
-        for x in db.query(ImportBatch).order_by(ImportBatch.id.desc()).limit(20).all()
-    ]
+        return JSONResponse({"error": "admin only"}, status_code=403)
+    return [{"id": x.id, "filename": x.filename, "rows": x.rows, "imported_at": x.imported_at.isoformat()} for x in db.query(ImportBatch).order_by(ImportBatch.id.desc()).limit(20).all()]
