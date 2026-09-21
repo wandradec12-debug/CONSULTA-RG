@@ -102,7 +102,7 @@ def login(username: str = Form(...), password: str = Form(...)):
         role = "operacional"
     if role:
         r = RedirectResponse("/", 302)
-        r.set_cookie("access_token", token_for(username, role), httponly=True, secure=COOKIE_SECURE, samesite="lax")
+        r.set_cookie("access_token", token_for(username, role), httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/", max_age=28800)
         return r
     return RedirectResponse("/login?error=1", 302)
 
