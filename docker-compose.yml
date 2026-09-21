@@ -9,6 +9,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+
   web:
     build: .
     environment:
@@ -16,9 +17,11 @@ services:
       SECRET_KEY: troque-esta-chave-em-producao
       ADMIN_USER: admin
       ADMIN_PASSWORD: admin123
+      COOKIE_SECURE: "false"
     ports:
       - "8000:8000"
     depends_on:
       - db
+
 volumes:
   pgdata:

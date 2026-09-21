@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+*.xlsx
+*.xls
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+__pycache__

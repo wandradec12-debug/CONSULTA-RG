@@ -1,60 +1,60 @@
-# Consulta RG • Estoque — versão online
+# CONSULTA RG — Estoque WYMS
 
-Sistema completo para:
-- login de administrador;
-- importação diária de Excel/CSV;
-- substituição da base ativa;
-- consulta de RG pelo celular;
-- leitura de QR Code pela câmera;
-- indicação da posição de estoque;
-- histórico das importações;
-- indicadores básicos;
-- registro das consultas.
+Sistema web para consulta de RG e localização de estoque a partir da exportação do WYMS.
 
-## 1. Testar no computador
-Requisitos: Docker Desktop.
+## O que esta versão contém
 
-```bash
-docker compose up --build
-```
+- Login administrativo.
+- Importação diária de Excel/CSV.
+- Consulta de RG.
+- Leitura de QR Code pela câmera do celular.
+- Retorno da posição (`LOCALIZAÇÃO`) e principais dados do item.
+- Histórico das importações.
+- Registro das consultas.
+- Endpoint `/health` para monitoramento do Render.
+- PostgreSQL para produção.
+- Configuração segura de cookie via `COOKIE_SECURE`.
 
-Abra `http://localhost:8000`.
+## Publicação no Render
 
-Usuário padrão: `admin`
-Senha padrão: `admin123`
+No Web Service:
 
-**Troque a senha antes de disponibilizar na internet.**
+- Runtime: **Docker**
+- Branch: `main`
+- Dockerfile Path: `./Dockerfile`
+- Root Directory: vazio
+- Health Check Path: `/health`
 
-## 2. Estrutura da planilha
-O sistema reconhece automaticamente nomes próximos a:
-- RG (obrigatório)
-- Posição (obrigatório)
-- Produto
-- Lote
-- Validade
-- Quantidade
-- Status
+Variáveis de ambiente:
 
-RG deve ser tratado como texto para preservar zeros à esquerda.
+- `DATABASE_URL` = Internal Database URL do PostgreSQL do Render.
+- `SECRET_KEY` = gerar pelo botão **Generate**.
+- `ADMIN_USER` = usuário administrativo.
+- `ADMIN_PASSWORD` = senha definida por você.
+- `COOKIE_SECURE` = `true`.
 
-## 3. Publicação
-A aplicação foi preparada em container. Pode ser publicada em um provedor de cloud que aceite Docker e PostgreSQL. Na publicação, configure:
-- DATABASE_URL
-- SECRET_KEY
-- ADMIN_USER
-- ADMIN_PASSWORD
+Não coloque senhas, tokens ou exportações reais do WYMS no GitHub.
 
-Também é necessário HTTPS para uso confiável da câmera do celular.
+## Uso
 
-## 4. Próxima evolução recomendada
-Para uma operação de CD, a próxima etapa é adicionar:
-1. usuários separados (Administrador / Operador);
-2. QR Code também na etiqueta da posição;
-3. confirmação de posição física;
-4. registro de divergência RG x posição;
-5. dashboard de acuracidade;
-6. exportação de divergências;
-7. trilha de auditoria;
-8. versionamento das bases em vez de apagar a anterior;
-9. integração com WMS/ERP, se disponível;
-10. domínio interno e controle de acesso conforme política de TI da empresa.
+1. Acesse o sistema.
+2. Faça login.
+3. Importe a exportação WYMS.
+4. Consulte o RG digitando o código ou usando a câmera.
+5. O sistema apresenta a posição cadastrada no WYMS.
+
+A exportação WYMS deve conter, no mínimo, as colunas `RG` e `LOCALIZAÇÃO`.
+
+## Importante
+
+O arquivo operacional WYMS não faz parte deste pacote. Ele deve ser enviado pela tela de importação do sistema.
+
+## Próxima evolução
+
+- QR Code nas posições físicas.
+- Validação RG x posição.
+- Registro de divergência.
+- Dashboard de acuracidade.
+- Trilhas de auditoria.
+- Versionamento das bases importadas.
+- Usuários e perfis de acesso.
