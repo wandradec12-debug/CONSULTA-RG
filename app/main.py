@@ -202,6 +202,21 @@ def lookup(rg: str, db: Session = Depends(db), user=Depends(current_user)):
         return {"found": False, "rg": clean}
     return {"found": True, "rg": item.rg, "cod_produto": item.cod_produto or "", "produto": item.produto, "lote": item.lote, "validade": item.validade, "posicao": item.posicao, "quantidade": item.quantidade, "status": item.status}
 
+@app.post("/api/consultations/batch")
+async def consultations_batch(payload: list[dict] = Body(...), db: Session = Depends(db), user=Depends(current_user)):
+    if not user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    saved = 0
+    for item in payload[:1000]:
+        rg = str(item.get("rg", "")).strip()
+        if not rg:
+            continue
+        found = 1 if item.get("found") else 0
+        db.add(Consultation(rg=rg, found=found))
+        saved += 1
+    db.commit()
+    return {"ok": True, "saved": saved}
+
 @app.get("/api/imports")
 def imports(db: Session = Depends(db), user=Depends(require_admin)):
     if not user:
