@@ -164,6 +164,7 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), 
             continue
         db.add(StockItem(
             rg=rg,
+            cod_produto=str(row[mapped["cod_produto"]]).strip() if "cod_produto" in mapped else "",
             produto=str(row[mapped["produto"]]).strip() if "produto" in mapped else "",
             lote=str(row[mapped["lote"]]).strip() if "lote" in mapped else "",
             validade=str(row[mapped["validade"]]).strip() if "validade" in mapped else "",
