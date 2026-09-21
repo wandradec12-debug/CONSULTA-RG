@@ -135,7 +135,7 @@ ALIASES = {
 def norm(s):
     import unicodedata
     s = str(s).strip().lower()
-    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).replace(" ", "").replace("_", "").replace("-", "")
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).replace(" ", "").replace("_", "").replace("-", "").replace(".", "")
 
 @app.post("/api/import")
 async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), user=Depends(require_admin)):
