@@ -126,6 +126,7 @@ def stats(db: Session = Depends(db), user=Depends(require_admin)):
 
 ALIASES = {
     "rg": "rg", "registrogeral": "rg", "registro": "rg", "codigo": "rg", "codigorg": "rg",
+    "codproduto": "cod_produto", "codigoproduto": "cod_produto", "codigodoproduto": "cod_produto", "codprod": "cod_produto",
     "produto": "produto", "item": "produto", "descricaoproduto": "produto",
     "lote": "lote", "validade": "validade", "posicao": "posicao", "localizacao": "posicao",
     "quantidade": "quantidade", "qtd": "quantidade", "qtdcx": "quantidade", "status": "status", "situacao": "status",
