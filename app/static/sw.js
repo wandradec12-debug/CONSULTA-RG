@@ -1,4 +1,4 @@
-const CACHE='consulta-rg-offline-v1';
+const CACHE='consulta-rg-offline-v2';
 const CORE=['/static/offline.html','/static/style.css','/static/manifest.json'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
