@@ -176,6 +176,20 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), 
     db.commit()
     return {"ok": True, "rows": len(df), "filename": file.filename, "import_id": batch.id}
 
+@app.get("/api/sync")
+def sync_data(db: Session = Depends(db), user=Depends(current_user)):
+    if not user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    last = db.query(ImportBatch).order_by(ImportBatch.id.desc()).first()
+    items = db.query(StockItem).all()
+    return {
+        "version": last.id if last else 0,
+        "filename": last.filename if last else None,
+        "imported_at": last.imported_at.isoformat() if last else None,
+        "count": len(items),
+        "items": [{"rg": x.rg, "cod_produto": x.cod_produto or "", "produto": x.produto or "", "lote": x.lote or "", "validade": x.validade or "", "posicao": x.posicao or "", "quantidade": x.quantidade or "", "status": x.status or ""} for x in items]
+    }
+
 @app.get("/api/rg/{rg}")
 def lookup(rg: str, db: Session = Depends(db), user=Depends(current_user)):
     if not user:
