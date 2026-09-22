@@ -70,8 +70,8 @@ let scanner;
 function startScanner(){
  if(scanner)return;
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert('A câmera não está disponível. Use o leitor físico ou digite o RG.');return}
- if(!('BarcodeDetector' in window)){alert('Este navegador não oferece leitura QR pela câmera. Use o leitor físico ou digite o RG.');return}
- const detector=new BarcodeDetector({formats:['qr_code']});
+ if(!('BarcodeDetector' in window)){alert('Este navegador não oferece leitura de QR/Data Matrix pela câmera. Use o leitor físico ou digite o RG.');return}
+ const detector=new BarcodeDetector({formats:['qr_code','data_matrix']});
  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}}).then(async stream=>{
   const reader=document.getElementById('reader');
   const v=document.createElement('video');
