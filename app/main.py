@@ -41,6 +41,7 @@ class StockItem(Base):
     posicao = Column(String(120))
     quantidade = Column(String(80))
     status = Column(String(120))
+    etiqueta_palete = Column(String(120), index=True)
     import_id = Column(Integer, ForeignKey("import_batches.id"), index=True)
 
 class Consultation(Base):
@@ -55,6 +56,10 @@ Base.metadata.create_all(bind=engine)
 if "cod_produto" not in {c["name"] for c in inspect(engine).get_columns("stock_items")}:
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE stock_items ADD COLUMN cod_produto VARCHAR(120)"))
+
+if "etiqueta_palete" not in {c["name"] for c in inspect(engine).get_columns("stock_items")}:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE stock_items ADD COLUMN etiqueta_palete VARCHAR(120)"))
 
 app = FastAPI(title="Consulta RG • Estoque")
 
@@ -131,10 +136,10 @@ def stats(db: Session = Depends(db), user=Depends(require_admin)):
     return {"rg_count": db.query(func.count(StockItem.id)).scalar() or 0, "imports": db.query(func.count(ImportBatch.id)).scalar() or 0, "rg_consultados": db.query(func.count(func.distinct(Consultation.rg))).scalar() or 0, "consultas_total": db.query(func.count(Consultation.id)).scalar() or 0, "last_import": last.imported_at.isoformat() if last else None}
 
 ALIASES = {
-    "rg": "rg", "registrogeral": "rg", "registro": "rg", "codigo": "rg", "codigorg": "rg",
+    "rg": "rg", "registrogeral": "rg", "registro": "rg", "codigo": "rg", "codigorg": "rg", "rgdacaixa": "rg",
     "codproduto": "cod_produto", "codigoproduto": "cod_produto", "codigodoproduto": "cod_produto", "codprod": "cod_produto",
     "produto": "produto", "item": "produto", "descricaoproduto": "produto",
-    "lote": "lote", "validade": "validade", "posicao": "posicao", "localizacao": "posicao",
+    "lote": "lote", "validade": "validade", "posicao": "posicao", "localizacao": "posicao", "etiquetapalete": "etiqueta_palete",
     "quantidade": "quantidade", "qtd": "quantidade", "qtdcx": "quantidade", "status": "status", "situacao": "status",
 }
 
@@ -150,7 +155,7 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), 
     raw = await file.read()
     checksum = hashlib.sha256(raw).hexdigest()
     try:
-        df = pd.read_csv(io.BytesIO(raw), dtype=str) if file.filename.lower().endswith(".csv") else pd.read_excel(io.BytesIO(raw), dtype=str)
+        df = pd.read_csv(io.BytesIO(raw), dtype=str, sep=None, engine="python", encoding="utf-8-sig") if file.filename.lower().endswith(".csv") else pd.read_excel(io.BytesIO(raw), dtype=str)
     except Exception as e:
         return JSONResponse({"error": f"Não foi possível ler o arquivo: {e}"}, status_code=400)
     mapped = {}
@@ -159,7 +164,7 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), 
         if key in ALIASES:
             mapped[ALIASES[key]] = c
     if "rg" not in mapped or "posicao" not in mapped:
-        return JSONResponse({"error": "A base precisa conter pelo menos as colunas RG e LOCALIZAÇÃO (posição)."}, status_code=400)
+        return JSONResponse({"error": "O CSV WYMS precisa conter as colunas RG DA CAIXA e LOCALIZAÇÃO."}, status_code=400)
     batch = ImportBatch(filename=file.filename, checksum=checksum, rows=len(df))
     db.add(batch)
     db.flush()
@@ -177,6 +182,7 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), 
             posicao=str(row[mapped["posicao"]]).strip(),
             quantidade=str(row[mapped["quantidade"]]).strip() if "quantidade" in mapped else "",
             status=str(row[mapped["status"]]).strip() if "status" in mapped else "",
+            etiqueta_palete=str(row[mapped["etiqueta_palete"]]).strip() if "etiqueta_palete" in mapped else "",
             import_id=batch.id,
         ))
     db.commit()
@@ -205,7 +211,7 @@ def sync_data(db: Session = Depends(db), user=Depends(current_user)):
         "filename": last.filename if last else None,
         "imported_at": last.imported_at.isoformat() if last else None,
         "count": len(items),
-        "items": [{"rg": x.rg, "cod_produto": x.cod_produto or "", "produto": x.produto or "", "lote": x.lote or "", "validade": x.validade or "", "posicao": x.posicao or "", "quantidade": x.quantidade or "", "status": x.status or ""} for x in items]
+        "items": [{"rg": x.rg, "etiqueta_palete": x.etiqueta_palete or "", "cod_produto": x.cod_produto or "", "produto": x.produto or "", "lote": x.lote or "", "validade": x.validade or "", "posicao": x.posicao or "", "quantidade": x.quantidade or "", "status": x.status or ""} for x in items]
     }
 
 @app.get("/api/rg/{rg}")
@@ -214,11 +220,13 @@ def lookup(rg: str, db: Session = Depends(db), user=Depends(current_user)):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     clean = rg.strip()
     item = db.query(StockItem).filter(StockItem.rg == clean).first()
+    if not item:
+        item = db.query(StockItem).filter(StockItem.etiqueta_palete == clean).first()
     db.add(Consultation(rg=clean, found=1 if item else 0))
     db.commit()
     if not item:
         return {"found": False, "rg": clean}
-    return {"found": True, "rg": item.rg, "cod_produto": item.cod_produto or "", "produto": item.produto, "lote": item.lote, "validade": item.validade, "posicao": item.posicao, "quantidade": item.quantidade, "status": item.status}
+    return {"found": True, "rg": item.rg, "etiqueta_palete": item.etiqueta_palete or "", "cod_produto": item.cod_produto or "", "produto": item.produto, "lote": item.lote, "validade": item.validade, "posicao": item.posicao, "quantidade": item.quantidade, "status": item.status}
 
 @app.post("/api/consultations/batch")
 async def consultations_batch(payload: list[dict] = Body(...), db: Session = Depends(db), user=Depends(current_user)):
