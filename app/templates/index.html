@@ -74,6 +74,10 @@ function startScanner(){
   v.muted=true;
   v.srcObject=stream;
   reader.appendChild(v);
+  const aim=document.createElement('div');
+  aim.className='scan-aim';
+  aim.innerHTML='<div class="scan-frame"></div><div class="scan-laser"></div><span>Aponte o QR para a área central</span>';
+  reader.appendChild(aim);
   const close=document.createElement('button');
   close.className='secondary';
   close.textContent='✕ Fechar câmera';
@@ -124,7 +128,9 @@ function startScanner(){
     let value=null;
     if(typeof window.jsQR==='function'){
      try{
-      const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const cropW=Math.floor(canvas.width*0.82), cropH=Math.floor(canvas.height*0.62);
+      const sx=Math.floor((canvas.width-cropW)/2), sy=Math.floor((canvas.height-cropH)/2);
+      const img=ctx.getImageData(sx,sy,cropW,cropH);
       const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
       if(code&&code.data)value=String(code.data).trim();
      }catch(e){}
