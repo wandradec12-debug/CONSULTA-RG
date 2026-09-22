@@ -66,7 +66,7 @@ function startScanner(){
   video:{facingMode:{ideal:'environment'}},
   audio:false
  }).then(function(stream){
-  reader.innerHTML='<div class="scanner-status">📷 Aponte a câmera para o QR Code</div>';
+  reader.innerHTML='<div class="scanner-status">📷 Aponte a câmera para o QR Code ou código de barras</div>';
   const v=document.createElement('video');
   v.setAttribute('playsinline','true');
   v.setAttribute('webkit-playsinline','true');
@@ -87,30 +87,54 @@ function startScanner(){
   }};
   const canvas=document.createElement('canvas');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
-  function loop(){
+  let lastValue='';
+  let lastTime=0;
+  function processFrame(){
    if(!scanner)return;
    if(v.readyState>=2 && v.videoWidth>0 && v.videoHeight>0){
-    const maxW=900;
+    const maxW=1000;
     const scale=Math.min(1,maxW/v.videoWidth);
     canvas.width=Math.max(1,Math.floor(v.videoWidth*scale));
     canvas.height=Math.max(1,Math.floor(v.videoHeight*scale));
     ctx.drawImage(v,0,0,canvas.width,canvas.height);
-    if(typeof window.jsQR==='function'){
+    const now=Date.now();
+    let value=null;
+    if(typeof window.BarcodeDetector==='function'){
+     try{
+      const detector=new BarcodeDetector({formats:[
+       'qr_code','code_128','code_39','code_93','codabar',
+       'ean_13','ean_8','upc_a','upc_e','itf','data_matrix'
+      ]});
+      detector.detect(v).then(function(codes){
+       if(!scanner||!codes||!codes.length)return;
+       const data=(codes[0].rawValue||'').trim();
+       if(data && (data!==lastValue || now-lastTime>1500)){
+        lastValue=data;lastTime=now;
+        document.getElementById('rg').value=data;
+        fecharCamera();consultar();
+       }
+      }).catch(function(){});
+     }catch(e){}
+    }
+    if(typeof window.jsQR==='function' && !scanner)return;
+    if(typeof window.jsQR==='function' && scanner){
      try{
       const img=ctx.getImageData(0,0,canvas.width,canvas.height);
       const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
       if(code&&code.data){
-       document.getElementById('rg').value=code.data.trim();
-       fecharCamera();
-       consultar();
-       return;
+       value=code.data.trim();
+       if(value && (value!==lastValue || now-lastTime>1500)){
+        lastValue=value;lastTime=now;
+        document.getElementById('rg').value=value;
+        fecharCamera();consultar();return;
+       }
       }
-     }catch(err){}
+     }catch(e){}
     }
    }
-   requestAnimationFrame(loop);
+   requestAnimationFrame(processFrame);
   }
-  v.play().then(function(){loop()}).catch(function(err){
+  v.play().then(function(){processFrame()}).catch(function(err){
    fecharCamera();
    alert('Não foi possível iniciar a câmera: '+(err.message||'erro desconhecido'));
   });
@@ -123,7 +147,7 @@ function startScanner(){
     ? 'Nenhuma câmera foi encontrada neste dispositivo.'
     : 'Não foi possível acessar a câmera: '+(err&&err.message?err.message:'erro desconhecido');
   alert(msg);
- });
+ }); 
 }
 
 window.addEventListener('online',()=>{atualizarStatus();sincronizar()});window.addEventListener('offline',atualizarStatus);
