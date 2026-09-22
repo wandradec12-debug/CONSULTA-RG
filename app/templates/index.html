@@ -67,8 +67,8 @@ function startScanner(){
  const detector=new BarcodeDetector({formats:['qr_code']});
  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}).then(stream=>{
   const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);
-  const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;stream.getTracks().forEach(t=>t.stop());scanner=null;consultar();return}}catch(e){}requestAnimationFrame(loop)};
-  scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null}};loop();
+  const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;stream.getTracks().forEach(t=>t.stop());scanner=null;document.getElementById('reader').innerHTML='';consultar();return}}catch(e){}requestAnimationFrame(loop)};
+  scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null;document.getElementById('reader').innerHTML=''}};loop();
  }).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e.message)});
 }
 window.addEventListener('online',()=>{atualizarStatus();sincronizar()});window.addEventListener('offline',atualizarStatus);
