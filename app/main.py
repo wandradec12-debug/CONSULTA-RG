@@ -57,6 +57,12 @@ if "cod_produto" not in {c["name"] for c in inspect(engine).get_columns("stock_i
         conn.execute(text("ALTER TABLE stock_items ADD COLUMN cod_produto VARCHAR(120)"))
 
 app = FastAPI(title="Consulta RG • Estoque")
+
+@app.middleware("http")
+async def camera_permissions(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Permissions-Policy"] = "camera=(self)"
+    return response
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
@@ -189,17 +195,6 @@ def sync_data(db: Session = Depends(db), user=Depends(current_user)):
         "count": len(items),
         "items": [{"rg": x.rg, "cod_produto": x.cod_produto or "", "produto": x.produto or "", "lote": x.lote or "", "validade": x.validade or "", "posicao": x.posicao or "", "quantidade": x.quantidade or "", "status": x.status or ""} for x in items]
     }
-
-@app.post("/api/consultations/batch")
-def consultations_batch(payload: list[dict] = Body(...), db: Session = Depends(db), user=Depends(current_user)):
-    if not user:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
-    for x in payload[:500]:
-        rg = str(x.get("rg", "")).strip()
-        if rg:
-            db.add(Consultation(rg=rg, found=1 if x.get("found") else 0))
-    db.commit()
-    return {"ok": True, "received": min(len(payload), 500)}
 
 @app.get("/api/rg/{rg}")
 def lookup(rg: str, db: Session = Depends(db), user=Depends(current_user)):
