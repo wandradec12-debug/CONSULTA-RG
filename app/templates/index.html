@@ -53,27 +53,35 @@ let scanner;
 function startScanner(){
  if(scanner)return;
  const reader=document.getElementById('reader');
- if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-  alert('A câmera não está disponível neste dispositivo/navegador.');
+ reader.innerHTML='<div class="scanner-status">📷 Abrindo câmera...</div>';
+ if(!window.isSecureContext){
+  reader.innerHTML='<div class="bad"><b>Câmera bloqueada:</b> o navegador exige HTTPS para acesso à câmera.</div>';
   return;
  }
- if(typeof window.jsQR!=='function'){
-  alert('O leitor QR não foi carregado. Atualize a página e tente novamente.');
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+  reader.innerHTML='<div class="bad"><b>Câmera indisponível:</b> este navegador/dispositivo não oferece acesso à câmera.</div>';
   return;
  }
  navigator.mediaDevices.getUserMedia({
-  video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
+  video:{facingMode:{ideal:'environment'}},
   audio:false
  }).then(function(stream){
-  reader.innerHTML='';
+  reader.innerHTML='<div class="scanner-status">📷 Aponte a câmera para o QR Code</div>';
   const v=document.createElement('video');
   v.setAttribute('playsinline','true');
-  v.setAttribute('autoplay','true');
+  v.setAttribute('webkit-playsinline','true');
+  v.autoplay=true;
   v.muted=true;
   v.srcObject=stream;
   reader.appendChild(v);
+  const close=document.createElement('button');
+  close.className='secondary';
+  close.textContent='✕ Fechar câmera';
+  close.onclick=fecharCamera;
+  reader.appendChild(close);
   scanner={stream:stream,stop:function(){
-   stream.getTracks().forEach(function(t){t.stop();});
+   stream.getTracks().forEach(function(t){try{t.stop()}catch(e){}});
+   v.pause();
    v.srcObject=null;
    scanner=null;
   }};
@@ -81,34 +89,39 @@ function startScanner(){
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   function loop(){
    if(!scanner)return;
-   if(v.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA && v.videoWidth>0 && v.videoHeight>0){
-    const maxW=1000;
+   if(v.readyState>=2 && v.videoWidth>0 && v.videoHeight>0){
+    const maxW=900;
     const scale=Math.min(1,maxW/v.videoWidth);
-    canvas.width=Math.floor(v.videoWidth*scale);
-    canvas.height=Math.floor(v.videoHeight*scale);
+    canvas.width=Math.max(1,Math.floor(v.videoWidth*scale));
+    canvas.height=Math.max(1,Math.floor(v.videoHeight*scale));
     ctx.drawImage(v,0,0,canvas.width,canvas.height);
-    try{
-     const img=ctx.getImageData(0,0,canvas.width,canvas.height);
-     const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
-     if(code && code.data){
-      document.getElementById('rg').value=code.data.trim();
-      fecharCamera();
-      consultar();
-      return;
-     }
-    }catch(err){}
+    if(typeof window.jsQR==='function'){
+     try{
+      const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+      if(code&&code.data){
+       document.getElementById('rg').value=code.data.trim();
+       fecharCamera();
+       consultar();
+       return;
+      }
+     }catch(err){}
+    }
    }
    requestAnimationFrame(loop);
   }
-  v.play().then(loop).catch(function(err){
+  v.play().then(function(){loop()}).catch(function(err){
    fecharCamera();
-   alert('Não foi possível iniciar a câmera: '+err.message);
+   alert('Não foi possível iniciar a câmera: '+(err.message||'erro desconhecido'));
   });
  }).catch(function(err){
   scanner=null;
+  reader.innerHTML='';
   const msg=err&&err.name==='NotAllowedError'
-   ? 'Permissão da câmera negada. Autorize a câmera para o Consulta RG nas configurações do navegador.'
-   : 'Não foi possível acessar a câmera: '+(err&&err.message?err.message:'erro desconhecido');
+   ? 'Permissão da câmera negada. Autorize a câmera nas configurações do navegador e tente novamente.'
+   : err&&err.name==='NotFoundError'
+    ? 'Nenhuma câmera foi encontrada neste dispositivo.'
+    : 'Não foi possível acessar a câmera: '+(err&&err.message?err.message:'erro desconhecido');
   alert(msg);
  });
 }
