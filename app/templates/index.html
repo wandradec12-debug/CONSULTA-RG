@@ -70,12 +70,34 @@ let scanner;
 function startScanner(){
  if(scanner)return;
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert('A câmera não está disponível. Use o leitor físico ou digite o RG.');return}
- if(!('BarcodeDetector' in window)){alert('Este navegador não oferece leitura pela câmera. Em coletores, use o leitor físico configurado para enviar o código no campo RG.');return}
+ if(!('BarcodeDetector' in window)){alert('Este navegador não oferece leitura QR pela câmera. Use o leitor físico ou digite o RG.');return}
  const detector=new BarcodeDetector({formats:['qr_code']});
- navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}).then(stream=>{
-  const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);
-  const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;stream.getTracks().forEach(t=>t.stop());scanner=null;document.getElementById('reader').innerHTML='';consultar();return}}catch(e){}requestAnimationFrame(loop)};
-  scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null;document.getElementById('reader').innerHTML=''}};loop();
+ navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}}).then(async stream=>{
+  const reader=document.getElementById('reader');
+  const v=document.createElement('video');
+  v.srcObject=stream;v.setAttribute('playsinline','');v.muted=true;v.autoplay=true;
+  reader.innerHTML='';reader.appendChild(v);
+  scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null;reader.innerHTML=''}};
+  try{await v.play()}catch(e){}
+  const loop=async()=>{
+   if(!scanner)return;
+   if(v.readyState>=2&&v.videoWidth>0){
+    try{
+     const codes=await detector.detect(v);
+     if(codes.length&&codes[0].rawValue){
+      const valor=String(codes[0].rawValue).trim();
+      document.getElementById('rg').value=valor;
+      stream.getTracks().forEach(t=>t.stop());
+      scanner=null;
+      reader.innerHTML='';
+      consultar();
+      return;
+     }
+    }catch(e){}
+   }
+   setTimeout(loop,100);
+  };
+  loop();
  }).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e.message)});
 }
 window.addEventListener('online',()=>{atualizarStatus();sincronizar()});window.addEventListener('offline',atualizarStatus);
