@@ -14,7 +14,7 @@
 <section class="hero card">
 <h1>Consulta de Estoque</h1>
 <p>Digite ou leia o RG da caixa/palete.</p>
-<div class="offline-bar"><span id="connection">🟢 Online</span><span id="syncStatus">Base local: verificando...</span><button id="installBtn" class="install-btn" onclick="instalarApp()">📲 Instalar aplicativo</button><button class="small" onclick="sincronizar()">↻ Sincronizar base</button></div>
+<div class="offline-bar"><span id="connection">🟢 Online</span><span id="syncStatus">Base local: verificando...</span><button id="installBtn" class="install-btn" onclick="instalarApp()">📲 Instalar aplicativo</button><button class="small" onclick="sincronizar(true)">↻ Sincronizar base</button></div>
 <p class="app-hint">Depois de instalado, o Consulta RG aparece na tela inicial como um aplicativo.</p>
 <div class="search"><input id="rg" placeholder="Digite ou leia o RG" autofocus><button onclick="consultar()">🔎 Consultar</button></div>
 <button class="secondary" onclick="startScanner()">📷 Ler QR Code</button>
@@ -27,7 +27,7 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredIns
 window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;document.getElementById('installBtn').style.display='none'});
 async function instalarApp(){if(deferredInstallPrompt){deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;document.getElementById('installBtn').style.display='none';return}alert('Use o menu do navegador e escolha Instalar aplicativo ou Adicionar à tela inicial.');}
 const DB_NAME='consulta-rg-offline',DB_VERSION=1,STORE='estoque',META='meta',QUEUE='fila';
-function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'rg'});if(!db.objectStoreNames.contains(META))db.createObjectStore(META,{keyPath:'key'});if(!db.objectStoreNames.contains(QUEUE))db.createObjectStore(QUEUE,{autoIncrement:true})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+let dbPromise=null;function openDB(){if(dbPromise)return dbPromise;dbPromise=new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'rg'});if(!db.objectStoreNames.contains(META))db.createObjectStore(META,{keyPath:'key'});if(!db.objectStoreNames.contains(QUEUE))db.createObjectStore(QUEUE,{autoIncrement:true})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>{dbPromise=null;reject(r.error)}});return dbPromise}
 async function dbPutMany(items){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite'),s=tx.objectStore(STORE);s.clear();for(const x of items)s.put(x);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
 async function dbGet(rg){const db=await openDB();return new Promise((resolve,reject)=>{const r=db.transaction(STORE).objectStore(STORE).get(rg);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}
 async function metaGet(){const db=await openDB();return new Promise((resolve,reject)=>{const r=db.transaction(META).objectStore(META).get('base');r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}
@@ -41,11 +41,11 @@ function render(d,offline=false){
  document.getElementById('result').innerHTML=d.found
  ? '<div class="ok"><h2>✓ RG localizado '+(offline?'• OFFLINE':'')+'</h2><p><b>RG:</b> '+esc(d.rg)+'</p><p><b>Posição esperada:</b> '+esc(d.posicao)+'</p><p><b>COD. PRODUTO:</b> '+esc(d.cod_produto)+'</p><p><b>Produto:</b> '+esc(d.produto)+'</p><p><b>Lote:</b> '+esc(d.lote)+'</p><p><b>Validade:</b> '+esc(d.validade)+'</p><p><b>Quantidade:</b> '+esc(d.quantidade)+'</p><p><b>Status:</b> '+esc(d.status)+'</p></div>'
  : '<div class="bad"><h2>⚠ RG não encontrado '+(offline?'• OFFLINE':'')+'</h2><p>'+esc(d.rg)+'</p></div>';
- document.getElementById('result').scrollIntoView({behavior:'smooth',block:'start'});
+ document.getElementById('result').scrollIntoView({behavior:'auto',block:'start'});
 }
 function fecharCamera(){if(scanner&&scanner.stop)scanner.stop();scanner=null;document.getElementById('reader').innerHTML='';}
 async function consultar(){const rg=document.getElementById('rg').value.trim();if(!rg)return;fecharCamera();try{let d=await dbGet(rg);if(d){render({found:true,...d},!navigator.onLine);await queueAdd({rg,found:true,consulted_at:new Date().toISOString()});if(navigator.onLine)enviarFila().catch(()=>{});return}if(!navigator.onLine){render({found:false,rg},true);return}d=await api('/api/rg/'+encodeURIComponent(rg));render(d,false)}catch(e){alert(e.message)}}
-async function sincronizar(){if(!navigator.onLine){document.getElementById('syncStatus').textContent='Sem internet • usando última base';return}const el=document.getElementById('syncStatus');el.textContent='Sincronizando...';try{const d=await api('/api/sync');await dbPutMany(d.items);await metaPut({version:d.version,filename:d.filename,imported_at:d.imported_at,count:d.count,synced_at:new Date().toISOString()});el.textContent='Base local: '+d.count.toLocaleString('pt-BR')+' RGs • '+formatDate(d.imported_at);await enviarFila()}catch(e){el.textContent='Falha na sincronização';console.error(e)}}
+async function sincronizar(force=false){if(!navigator.onLine){document.getElementById('syncStatus').textContent='Sem internet • usando última base';return}const el=document.getElementById('syncStatus');try{const local=await metaGet();const remote=await api('/api/sync/meta');if(!force&&local&&Number(local.version)===Number(remote.version)&&Number(local.count)===Number(remote.count)){el.textContent='Base local: '+Number(local.count||0).toLocaleString('pt-BR')+' RGs • '+formatDate(local.imported_at);return}el.textContent='Atualizando base...';const d=await api('/api/sync');await dbPutMany(d.items);await metaPut({version:d.version,filename:d.filename,imported_at:d.imported_at,count:d.count,synced_at:new Date().toISOString()});el.textContent='Base local: '+d.count.toLocaleString('pt-BR')+' RGs • '+formatDate(d.imported_at)}catch(e){el.textContent='Base local disponível';console.error(e)}finally{enviarFila().catch(()=>{})}}
 async function enviarFila(){const q=await queueAll();if(!q.length||!navigator.onLine)return;try{await api('/api/consultations/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});await queueClear()}catch(e){}}
 function formatDate(s){if(!s)return 'sem importação';try{return new Date(s).toLocaleString('pt-BR')}catch{return s}}
 async function atualizarStatus(){document.getElementById('connection').textContent=navigator.onLine?'🟢 Online':'🟠 OFFLINE';const m=await metaGet();document.getElementById('syncStatus').textContent=m?'Base local: '+Number(m.count||0).toLocaleString('pt-BR')+' RGs • '+formatDate(m.imported_at):'Base local: não sincronizada';}
@@ -89,16 +89,13 @@ function startScanner(){
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   let detector=null;
   let detectingBarcode=false;
-  try{
-   if(typeof window.BarcodeDetector==='function'){
-    const supported=typeof BarcodeDetector.getSupportedFormats==='function'
-      ? await BarcodeDetector.getSupportedFormats()
-      : [];
+  function initBarcodeDetector(){
+   if(detector||typeof window.BarcodeDetector!=='function')return;
+   try{
     const wanted=['qr_code','code_128','code_39','code_93','codabar','ean_13','ean_8','upc_a','upc_e','itf'];
-    const formats=supported.length?wanted.filter(x=>supported.includes(x)):wanted;
-    if(formats.length)detector=new BarcodeDetector({formats:formats});
-   }
-  }catch(e){detector=null}
+    detector=new BarcodeDetector({formats:wanted});
+   }catch(e){detector=null}
+  }
   async function detectBarcode(){
    if(!detector||detectingBarcode||!scanner)return null;
    detectingBarcode=true;
@@ -125,13 +122,16 @@ function startScanner(){
     ctx.drawImage(v,0,0,canvas.width,canvas.height);
     const now=Date.now();
     let value=null;
-    if(frame++%3===0) value=await detectBarcode();
-    if(!value && typeof window.jsQR==='function'){
+    if(typeof window.jsQR==='function'){
      try{
       const img=ctx.getImageData(0,0,canvas.width,canvas.height);
-      const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+      const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
       if(code&&code.data)value=String(code.data).trim();
      }catch(e){}
+    }
+    if(!value && frame++%8===0){
+     initBarcodeDetector();
+     value=await detectBarcode();
     }
     if(value && (value!==lastValue || now-lastTime>1500)){
      lastValue=value;lastTime=now;
@@ -167,6 +167,6 @@ function startScanner(){
 window.addEventListener('online',()=>{atualizarStatus();sincronizar()});window.addEventListener('offline',atualizarStatus);
 document.getElementById('rg').addEventListener('keydown',e=>{if(e.key==='Enter')consultar()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
-atualizarStatus();if(navigator.onLine)sincronizar();
+atualizarStatus();if(navigator.onLine)sincronizar(false);
 </script>
 </body></html>
