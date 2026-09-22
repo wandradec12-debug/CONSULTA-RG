@@ -47,7 +47,7 @@ function startScanner(){
  if(scanner)return;
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert('A câmera não está disponível. Use o leitor físico ou digite o RG.');return}
  if(!('BarcodeDetector' in window)){alert('Este navegador não oferece leitura pela câmera. Em coletores, use o leitor físico configurado para enviar o código no campo RG.');return}
- const detector=new BarcodeDetector({formats:['qr_code','code_128','code_39','ean_13','ean_8']});
+ const detector=new BarcodeDetector({formats:['qr_code']});
  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}).then(stream=>{
   const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);
   const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;stream.getTracks().forEach(t=>t.stop());scanner=null;consultar();return}}catch(e){}requestAnimationFrame(loop)};
