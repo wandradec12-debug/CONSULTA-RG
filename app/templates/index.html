@@ -94,41 +94,52 @@ function startScanner(){
   let lastValue='';
   let lastTime=0;
   let frame=0;
+  let scanBusy=false;
+  let lastScanAt=0;
+  let canvasReady=false;
+
   async function processFrame(){
    if(!scanner)return;
-   if(v.readyState>=2 && v.videoWidth>0 && v.videoHeight>0){
-    const maxW=640;
-    const scale=Math.min(1,maxW/v.videoWidth);
-    canvas.width=Math.max(1,Math.floor(v.videoWidth*scale));
-    canvas.height=Math.max(1,Math.floor(v.videoHeight*scale));
-    ctx.drawImage(v,0,0,canvas.width,canvas.height);
-    const now=Date.now();
-    let value=null;
-    if(typeof window.jsQR==='function'){
-     try{
-      const cropW=Math.floor(canvas.width*0.65), cropH=Math.floor(canvas.height*0.50);
-      const sx=Math.floor((canvas.width-cropW)/2), sy=Math.floor((canvas.height-cropH)/2);
-      const img=ctx.getImageData(sx,sy,cropW,cropH);
+
+   const now=Date.now();
+   // Scan only ~8 times/sec instead of every display frame.
+   if(!scanBusy && v.readyState>=2 && v.videoWidth>0 && v.videoHeight>0 && now-lastScanAt>=125){
+    scanBusy=true;
+    lastScanAt=now;
+    try{
+     // Fixed low resolution keeps jsQR light while covering the entire camera view.
+     if(!canvasReady){
+      const targetW=480;
+      const scale=Math.min(1,targetW/v.videoWidth);
+      canvas.width=Math.max(1,Math.floor(v.videoWidth*scale));
+      canvas.height=Math.max(1,Math.floor(v.videoHeight*scale));
+      canvasReady=true;
+     }
+     ctx.drawImage(v,0,0,canvas.width,canvas.height);
+     const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+     if(typeof window.jsQR==='function'){
       const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
-      if(code&&code.data)value=String(code.data).trim();
-     }catch(e){}
-    }
-    if(!value && frame++%8===0){
-     initBarcodeDetector();
-     value=await detectBarcode();
-    }
-    if(value && (value!==lastValue || now-lastTime>1500)){
-     lastValue=value;lastTime=now;
-     document.getElementById('rg').value=value;
-     fecharCamera();
-     consultar();
-     return;
+      if(code&&code.data){
+       const value=String(code.data).trim();
+       if(value){
+        document.getElementById('rg').value=value;
+        fecharCamera();
+        consultar();
+        return;
+       }
+      }
+     }
+    }catch(e){}finally{
+     scanBusy=false;
     }
    }
-   requestAnimationFrame(processFrame);
+   if(scanner) setTimeout(processFrame,40);
   }
   try{
    await v.play();
+   canvasReady=false;
+   lastScanAt=0;
+   scanBusy=false;
    processFrame();
   }catch(err){
    fecharCamera();
