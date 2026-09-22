@@ -6,7 +6,6 @@
 <link rel="manifest" href="/static/manifest.json">
 <title>Consulta RG • Operacional</title>
 <link rel="stylesheet" href="/static/style.css">
-
 </head>
 <body>
 <header><div class="brand-header"><img class="jbs-logo header-logo" src="/static/jbs-logo.svg" alt="JBS"><div><strong>Consulta RG • Operacional</strong><span> • {{ user.user }}</span></div></div><a href="/logout">Sair</a></header>
@@ -15,7 +14,8 @@
 <h1>Consulta de Estoque</h1>
 <p>Digite ou leia o RG da caixa/palete.</p>
 <div class="offline-bar"><span id="connection">🟢 Online</span><span id="syncStatus">Base local: verificando...</span><button id="installBtn" class="install-btn" onclick="instalarApp()">📲 Instalar aplicativo</button><button class="small" onclick="sincronizar()">↻ Sincronizar base</button></div>
-<p class="app-hint">Depois de instalado, o Consulta RG aparece na tela inicial como um aplicativo.</p><div class="search"><input id="rg" placeholder="Digite ou leia o RG" autofocus><button onclick="consultar()">🔎 Consultar</button></div>
+<p class="app-hint">Depois de instalado, o Consulta RG aparece na tela inicial como um aplicativo.</p>
+<div class="search"><input id="rg" placeholder="Digite ou leia o RG" autofocus><button onclick="consultar()">🔎 Consultar</button></div>
 <button class="secondary" onclick="startScanner()">📷 Ler QR Code</button>
 <div id="reader"></div><div id="result"></div>
 </section>
@@ -36,8 +36,14 @@ async function queueAll(){const db=await openDB();return new Promise((resolve,re
 async function queueClear(){const db=await openDB();return new Promise((resolve,reject)=>{const tx=db.transaction(QUEUE,'readwrite');tx.objectStore(QUEUE).clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
 async function api(url,opt){const r=await fetch(url,{credentials:'include',...(opt||{})});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro');return j}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-function render(d,offline=false){document.getElementById('result').innerHTML=d.found?'<div class="ok"><h2>✓ RG localizado '+(offline?'• OFFLINE':'')+'</h2><p><b>Posição esperada:</b> '+esc(d.posicao)+'</p><p><b>COD. PRODUTO:</b> '+esc(d.cod_produto)+'</p><p><b>Produto:</b> '+esc(d.produto)+'</p><p><b>Lote:</b> '+esc(d.lote)+'</p><p><b>Validade:</b> '+esc(d.validade)+'</p><p><b>Quantidade:</b> '+esc(d.quantidade)+'</p><p><b>Status:</b> '+esc(d.status)+'</p></div>':'<div class="bad"><h2>⚠ RG não encontrado '+(offline?'• OFFLINE':'')+'</h2><p>'+esc(d.rg)+'</p></div>'}
-async function consultar(){const rg=document.getElementById('rg').value.trim();if(!rg)return;try{let d=await dbGet(rg);if(d){render({found:true,...d},!navigator.onLine);await queueAdd({rg,found:true,consulted_at:new Date().toISOString()});if(navigator.onLine)enviarFila().catch(()=>{});return}if(!navigator.onLine){render({found:false,rg},true);return}d=await api('/api/rg/'+encodeURIComponent(rg));render(d,false)}catch(e){alert(e.message)}}
+function render(d,offline=false){
+ document.getElementById('result').innerHTML=d.found
+ ? '<div class="ok"><h2>✓ RG localizado '+(offline?'• OFFLINE':'')+'</h2><p><b>RG:</b> '+esc(d.rg)+'</p><p><b>Posição esperada:</b> '+esc(d.posicao)+'</p><p><b>COD. PRODUTO:</b> '+esc(d.cod_produto)+'</p><p><b>Produto:</b> '+esc(d.produto)+'</p><p><b>Lote:</b> '+esc(d.lote)+'</p><p><b>Validade:</b> '+esc(d.validade)+'</p><p><b>Quantidade:</b> '+esc(d.quantidade)+'</p><p><b>Status:</b> '+esc(d.status)+'</p></div>'
+ : '<div class="bad"><h2>⚠ RG não encontrado '+(offline?'• OFFLINE':'')+'</h2><p>'+esc(d.rg)+'</p></div>';
+ document.getElementById('result').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function fecharCamera(){if(scanner&&scanner.stop)scanner.stop();scanner=null;document.getElementById('reader').innerHTML='';}
+async function consultar(){const rg=document.getElementById('rg').value.trim();if(!rg)return;fecharCamera();try{let d=await dbGet(rg);if(d){render({found:true,...d},!navigator.onLine);await queueAdd({rg,found:true,consulted_at:new Date().toISOString()});if(navigator.onLine)enviarFila().catch(()=>{});return}if(!navigator.onLine){render({found:false,rg},true);return}d=await api('/api/rg/'+encodeURIComponent(rg));render(d,false)}catch(e){alert(e.message)}}
 async function sincronizar(){if(!navigator.onLine){document.getElementById('syncStatus').textContent='Sem internet • usando última base';return}const el=document.getElementById('syncStatus');el.textContent='Sincronizando...';try{const d=await api('/api/sync');await dbPutMany(d.items);await metaPut({version:d.version,filename:d.filename,imported_at:d.imported_at,count:d.count,synced_at:new Date().toISOString()});el.textContent='Base local: '+d.count.toLocaleString('pt-BR')+' RGs • '+formatDate(d.imported_at);await enviarFila()}catch(e){el.textContent='Falha na sincronização';console.error(e)}}
 async function enviarFila(){const q=await queueAll();if(!q.length||!navigator.onLine)return;try{await api('/api/consultations/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});await queueClear()}catch(e){}}
 function formatDate(s){if(!s)return 'sem importação';try{return new Date(s).toLocaleString('pt-BR')}catch{return s}}
@@ -50,7 +56,7 @@ function startScanner(){
  const detector=new BarcodeDetector({formats:['qr_code']});
  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}).then(stream=>{
   const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);
-  const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;stream.getTracks().forEach(t=>t.stop());scanner=null;consultar();return}}catch(e){}requestAnimationFrame(loop)};
+  const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;fecharCamera();consultar();return}}catch(e){}requestAnimationFrame(loop)};
   scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null}};loop();
  }).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e.message)});
 }
@@ -59,4 +65,4 @@ document.getElementById('rg').addEventListener('keydown',e=>{if(e.key==='Enter')
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
 atualizarStatus();if(navigator.onLine)sincronizar();
 </script>
-</body></html>\n
+</body></html>
