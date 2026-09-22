@@ -61,7 +61,7 @@ async function consultar(){
   alert('Base local indisponível. Sincronize a base antes de realizar consultas.');
  }
 }
-function novaPesquisa(){document.getElementById('resultTela').hidden=true;document.getElementById('consultaTela').hidden=false;document.getElementById('result').innerHTML='';document.getElementById('rg').value='';document.getElementById('rg').focus();window.scrollTo({top:0,behavior:'instant'})}
+function novaPesquisa(){document.getElementById('resultTela').hidden=true;document.getElementById('consultaTela').hidden=false;document.getElementById('result').innerHTML='';document.getElementById('rg').value='';window.scrollTo({top:0,behavior:'instant'});setTimeout(()=>startScanner(),150)}
 async function sincronizar(){if(!navigator.onLine){document.getElementById('syncStatus').textContent='Sem internet • usando última base';return}const el=document.getElementById('syncStatus');el.textContent='Sincronizando...';try{const d=await api('/api/sync');await dbPutMany(d.items);await metaPut({version:d.version,filename:d.filename,imported_at:d.imported_at,count:d.count,synced_at:new Date().toISOString()});el.textContent='Base local: '+d.count.toLocaleString('pt-BR')+' RGs • '+formatDate(d.imported_at);await enviarFila()}catch(e){el.textContent='Falha na sincronização';console.error(e)}}
 async function enviarFila(){const q=await queueAll();if(!q.length||!navigator.onLine)return;try{await api('/api/consultations/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});await queueClear()}catch(e){}}
 function formatDate(s){if(!s)return 'sem importação';try{return new Date(s).toLocaleString('pt-BR')}catch{return s}}
