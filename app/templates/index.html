@@ -52,35 +52,67 @@ async function atualizarStatus(){document.getElementById('connection').textConte
 let scanner;
 function startScanner(){
  if(scanner)return;
- if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert('A câmera não está disponível. Use o leitor físico ou digite o RG.');return}
- navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}).then(stream=>{
-  const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;v.muted=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);
-  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
-  scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null}};
-  const loop=()=>{
+ const reader=document.getElementById('reader');
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+  alert('A câmera não está disponível neste dispositivo/navegador.');
+  return;
+ }
+ if(typeof window.jsQR!=='function'){
+  alert('O leitor QR não foi carregado. Atualize a página e tente novamente.');
+  return;
+ }
+ navigator.mediaDevices.getUserMedia({
+  video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
+  audio:false
+ }).then(function(stream){
+  reader.innerHTML='';
+  const v=document.createElement('video');
+  v.setAttribute('playsinline','true');
+  v.setAttribute('autoplay','true');
+  v.muted=true;
+  v.srcObject=stream;
+  reader.appendChild(v);
+  scanner={stream:stream,stop:function(){
+   stream.getTracks().forEach(function(t){t.stop();});
+   v.srcObject=null;
+   scanner=null;
+  }};
+  const canvas=document.createElement('canvas');
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  function loop(){
    if(!scanner)return;
-   if(v.readyState>=2){
-    const w=v.videoWidth,h=v.videoHeight;
-    if(w&&h){
-     const scale=Math.min(1,1000/w),cw=Math.max(1,Math.floor(w*scale)),ch=Math.max(1,Math.floor(h*scale));
-     canvas.width=cw;canvas.height=ch;ctx.drawImage(v,0,0,cw,ch);
-     try{
-      const img=ctx.getImageData(0,0,cw,ch);
-      const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
-      if(code&&code.data){
-       document.getElementById('rg').value=code.data.trim();
-       fecharCamera();
-       consultar();
-       return;
-      }
-     }catch(e){}
-    }
+   if(v.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA && v.videoWidth>0 && v.videoHeight>0){
+    const maxW=1000;
+    const scale=Math.min(1,maxW/v.videoWidth);
+    canvas.width=Math.floor(v.videoWidth*scale);
+    canvas.height=Math.floor(v.videoHeight*scale);
+    ctx.drawImage(v,0,0,canvas.width,canvas.height);
+    try{
+     const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+     const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+     if(code && code.data){
+      document.getElementById('rg').value=code.data.trim();
+      fecharCamera();
+      consultar();
+      return;
+     }
+    }catch(err){}
    }
    requestAnimationFrame(loop);
-  };
-  loop();
- }).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e.message)});
+  }
+  v.play().then(loop).catch(function(err){
+   fecharCamera();
+   alert('Não foi possível iniciar a câmera: '+err.message);
+  });
+ }).catch(function(err){
+  scanner=null;
+  const msg=err&&err.name==='NotAllowedError'
+   ? 'Permissão da câmera negada. Autorize a câmera para o Consulta RG nas configurações do navegador.'
+   : 'Não foi possível acessar a câmera: '+(err&&err.message?err.message:'erro desconhecido');
+  alert(msg);
+ });
 }
+
 window.addEventListener('online',()=>{atualizarStatus();sincronizar()});window.addEventListener('offline',atualizarStatus);
 document.getElementById('rg').addEventListener('keydown',e=>{if(e.key==='Enter')consultar()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
