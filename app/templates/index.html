@@ -6,6 +6,7 @@
 <link rel="manifest" href="/static/manifest.json">
 <title>Consulta RG • Operacional</title>
 <link rel="stylesheet" href="/static/style.css">
+<script src="/static/jsQR.js"></script>
 </head>
 <body>
 <header><div class="brand-header"><img class="jbs-logo header-logo" src="/static/jbs-logo.svg" alt="JBS"><div><strong>Consulta RG • Operacional</strong><span> • {{ user.user }}</span></div></div><a href="/logout">Sair</a></header>
@@ -52,12 +53,32 @@ let scanner;
 function startScanner(){
  if(scanner)return;
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert('A câmera não está disponível. Use o leitor físico ou digite o RG.');return}
- if(!('BarcodeDetector' in window)){alert('Este navegador não oferece leitura pela câmera. Em coletores, use o leitor físico configurado para enviar o código no campo RG.');return}
- const detector=new BarcodeDetector({formats:['qr_code']});
- navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}).then(stream=>{
-  const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);
-  const loop=async()=>{if(!scanner)return;try{const codes=await detector.detect(v);if(codes.length){document.getElementById('rg').value=codes[0].rawValue;fecharCamera();consultar();return}}catch(e){}requestAnimationFrame(loop)};
-  scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null}};loop();
+ navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}).then(stream=>{
+  const v=document.createElement('video');v.srcObject=stream;v.setAttribute('playsinline','');v.autoplay=true;v.muted=true;document.getElementById('reader').innerHTML='';document.getElementById('reader').appendChild(v);
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+  scanner={stop:()=>{stream.getTracks().forEach(t=>t.stop());scanner=null}};
+  const loop=()=>{
+   if(!scanner)return;
+   if(v.readyState>=2){
+    const w=v.videoWidth,h=v.videoHeight;
+    if(w&&h){
+     const scale=Math.min(1,1000/w),cw=Math.max(1,Math.floor(w*scale)),ch=Math.max(1,Math.floor(h*scale));
+     canvas.width=cw;canvas.height=ch;ctx.drawImage(v,0,0,cw,ch);
+     try{
+      const img=ctx.getImageData(0,0,cw,ch);
+      const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+      if(code&&code.data){
+       document.getElementById('rg').value=code.data.trim();
+       fecharCamera();
+       consultar();
+       return;
+      }
+     }catch(e){}
+    }
+   }
+   requestAnimationFrame(loop);
+  };
+  loop();
  }).catch(e=>{scanner=null;alert('Não foi possível acessar a câmera: '+e.message)});
 }
 window.addEventListener('online',()=>{atualizarStatus();sincronizar()});window.addEventListener('offline',atualizarStatus);
