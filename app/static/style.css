@@ -6,3 +6,5 @@
 .scan-laser{width:min(68vw,280px);height:2px;background:#ff2b2b;box-shadow:0 0 7px #ff2b2b,0 0 14px rgba(255,0,0,.75);position:absolute;animation:scanLaser 1.35s ease-in-out infinite}
 .scan-aim span{position:absolute;top:calc(50% + 118px);font-size:13px;font-weight:600;background:rgba(0,0,0,.62);color:#fff;padding:5px 9px;border-radius:8px}
 @keyframes scanLaser{0%,100%{transform:translateY(-92px);opacity:.65}50%{transform:translateY(92px);opacity:1}}
+
+.result-screen{min-height:calc(100vh - 90px);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:28px 16px;text-align:center}.result-screen #result{width:min(900px,100%)}.result-screen .ok,.result-screen .bad{margin:0;padding:28px;border-radius:16px;box-shadow:0 4px 18px #0001;font-size:18px}.result-screen h2{font-size:30px;margin-bottom:24px}.result-screen p{font-size:20px;margin:14px 0}.new-search{margin-top:28px;width:min(420px,100%);font-size:18px;padding:15px 20px}@media(max-width:760px){.result-screen{min-height:calc(100vh - 70px);padding:20px 12px}.result-screen h2{font-size:25px}.result-screen p{font-size:18px}}
