@@ -63,10 +63,10 @@ function startScanner(){
   return;
  }
  navigator.mediaDevices.getUserMedia({
-  video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
+  video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}},
   audio:false
  }).then(async function(stream){
-  reader.innerHTML='<div class="scanner-status">📷 Aponte para o QR Code ou código de barras</div>';
+  reader.innerHTML='<div class="scanner-status">📷 Aponte o QR para a área central</div>';
   const v=document.createElement('video');
   v.setAttribute('playsinline','true');
   v.setAttribute('webkit-playsinline','true');
@@ -91,35 +91,13 @@ function startScanner(){
   }};
   const canvas=document.createElement('canvas');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
-  let detector=null;
-  let detectingBarcode=false;
-  function initBarcodeDetector(){
-   if(detector||typeof window.BarcodeDetector!=='function')return;
-   try{
-    const wanted=['qr_code','code_128','code_39','code_93','codabar','ean_13','ean_8','upc_a','upc_e','itf'];
-    detector=new BarcodeDetector({formats:wanted});
-   }catch(e){detector=null}
-  }
-  async function detectBarcode(){
-   if(!detector||detectingBarcode||!scanner)return null;
-   detectingBarcode=true;
-   try{
-    const codes=await detector.detect(v);
-    if(codes&&codes.length){
-     const data=String(codes[0].rawValue||'').trim();
-     if(data)return data;
-    }
-   }catch(e){}
-   finally{detectingBarcode=false}
-   return null;
-  }
   let lastValue='';
   let lastTime=0;
   let frame=0;
   async function processFrame(){
    if(!scanner)return;
    if(v.readyState>=2 && v.videoWidth>0 && v.videoHeight>0){
-    const maxW=1000;
+    const maxW=640;
     const scale=Math.min(1,maxW/v.videoWidth);
     canvas.width=Math.max(1,Math.floor(v.videoWidth*scale));
     canvas.height=Math.max(1,Math.floor(v.videoHeight*scale));
@@ -128,7 +106,7 @@ function startScanner(){
     let value=null;
     if(typeof window.jsQR==='function'){
      try{
-      const cropW=Math.floor(canvas.width*0.82), cropH=Math.floor(canvas.height*0.62);
+      const cropW=Math.floor(canvas.width*0.65), cropH=Math.floor(canvas.height*0.50);
       const sx=Math.floor((canvas.width-cropW)/2), sy=Math.floor((canvas.height-cropH)/2);
       const img=ctx.getImageData(sx,sy,cropW,cropH);
       const code=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
