@@ -149,9 +149,9 @@ def norm(s):
     return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).replace(" ", "").replace("_", "").replace("-", "").replace(".", "")
 
 @app.post("/api/import")
-async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), user=Depends(require_admin)):
+async def import_excel(file: UploadFile = File(...), db: Session = Depends(db), user=Depends(current_user)):
     if not user:
-        return JSONResponse({"error": "admin only"}, status_code=403)
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
     raw = await file.read()
     checksum = hashlib.sha256(raw).hexdigest()
     try:
